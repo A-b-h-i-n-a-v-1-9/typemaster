@@ -16,12 +16,22 @@
 }
 
 .roomInput {
-    width: 100%;
+    width: 80%;
     padding: 0.75rem 1rem;
     margin-bottom: 1.5rem;
     border: 2px solid #c3dafe;
     border-radius: 0.5rem;
     font-size: 1rem;
+}
+
+.roomSelect {
+    width: 80%;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1.5rem;
+    border: 2px solid #c3dafe;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    background-color: white;
 }
 
 .roomButton {

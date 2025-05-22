@@ -1,5 +1,3 @@
-// server.js
-
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
@@ -20,79 +18,133 @@ const io = new Server(server, {
 });
 
 const rooms = {};
-
-// ✅ Create HTTPS agent to ignore expired certs (dev use only)
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
-// ✅ Fetch prompt with certificate fix
-const fallbackPrompts = [
-    "Typing fast is not enough; accuracy wins the race.",
-    "The only way to get better at typing is to keep typing every day.",
-    "Consistent practice builds consistent performance.",
-    "When your fingers flow with your thoughts, you've mastered typing.",
-    "Each keystroke brings you closer to mastery.",
+const modeWordCounts = {
+    "2min": 120,
+    "5min": 300,
+    "10min": 600,
+    "30min": 1800,
+};
+
+const fallbackWords = [
+    "the", "quick", "brown", "fox", "jumps", "over", "lazy", "dog",
+    "keyboard", "practice", "speed", "accuracy", "challenge", "typing",
+    "javascript", "code", "socket", "network", "race", "game", "player",
+    "focus", "skill", "test", "time", "clock", "word", "letter", "hands"
 ];
 
-async function fetchPrompt(mode = "quote") {
+async function fetchPrompt(mode = "2min") {
+    const wordCount = modeWordCounts[mode] || 120;
+
     try {
-        // Try online first
-        const res = await axios.get("https://zenquotes.io/api/random");
-        return res.data[0].q + " — " + res.data[0].a;
+        const res = await axios.get(
+            `https://random-word-api.herokuapp.com/word?number=${wordCount}`,
+            { httpsAgent }
+        );
+        return res.data.join(" ");
     } catch (err) {
-        console.error("⚠️ Prompt fetch failed:", err.message);
-        // Fallback to local
-        const randomIndex = Math.floor(Math.random() * fallbackPrompts.length);
-        return fallbackPrompts[randomIndex];
+        console.error("⚠️ Prompt API failed, using fallback:", err.message);
+        const words = Array.from({ length: wordCount }, () =>
+            fallbackWords[Math.floor(Math.random() * fallbackWords.length)]
+        );
+        return words.join(" ");
     }
 }
-
 
 io.on("connection", (socket) => {
     console.log("🔌 User connected:", socket.id);
 
-    socket.on("join-room", async ({ roomId, user }) => {
+    socket.on("join-room", async ({ roomId, user, mode = "2min" }) => {
         socket.join(roomId);
 
+        // 🏗️ Room creation and host assignment
         if (!rooms[roomId]) {
-            const prompt = await fetchPrompt("quote");
+            const prompt = await fetchPrompt(mode);
             rooms[roomId] = {
                 users: [],
                 prompt,
+                mode,
+                hostId: socket.id, // assign this socket as host
             };
         }
 
-        const existingUser = rooms[roomId].users.find((u) => u.name === user);
+        const room = rooms[roomId];
+
+        // ❌ Ignore new mode requests if room already exists
+        const isHost = room.hostId === socket.id;
+
+        const existingUser = room.users.find((u) => u.name === user);
         if (!existingUser) {
-            rooms[roomId].users.push({
+            room.users.push({
                 id: socket.id,
                 name: user,
                 progress: 0,
+                wpm: 0,
+                accuracy: 0,
+                isHost,
             });
         }
 
         io.to(roomId).emit("room-joined", {
-            users: rooms[roomId].users,
-            prompt: rooms[roomId].prompt,
+            users: room.users,
+            prompt: room.prompt,
+            mode: room.mode,
+            hostId: room.hostId,
         });
     });
 
-    socket.on("update-progress", ({ roomId, user, progress }) => {
+    socket.on("update-progress", ({ roomId, user, progress, wpm, accuracy }) => {
         const room = rooms[roomId];
         if (!room) return;
 
         const player = room.users.find((u) => u.name === user);
         if (player) {
             player.progress = progress;
+            player.wpm = wpm;
+            player.accuracy = accuracy;
         }
 
         io.to(roomId).emit("player-progress", room.users);
     });
 
+    // 🚀 Restart logic - prompt regeneration only
+    socket.on("restart-game", async ({ roomId }) => {
+        const room = rooms[roomId];
+        if (!room) return;
+
+        const newPrompt = await fetchPrompt(room.mode);
+        room.prompt = newPrompt;
+
+        room.users.forEach((u) => {
+            u.progress = 0;
+            u.wpm = 0;
+            u.accuracy = 0;
+        });
+
+        io.to(roomId).emit("room-joined", {
+            users: room.users,
+            prompt: newPrompt,
+            mode: room.mode,
+            hostId: room.hostId,
+        });
+    });
+
     socket.on("disconnect", () => {
         console.log("🔌 User disconnected:", socket.id);
+
         for (const roomId in rooms) {
             const room = rooms[roomId];
+            const wasHost = room.hostId === socket.id;
+
             room.users = room.users.filter((u) => u.id !== socket.id);
+
+            if (wasHost && room.users.length > 0) {
+                // 🎯 Reassign host if needed
+                room.hostId = room.users[0].id;
+                room.users[0].isHost = true;
+            }
+
             io.to(roomId).emit("player-progress", room.users);
         }
     });
