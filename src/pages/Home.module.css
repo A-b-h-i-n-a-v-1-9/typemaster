@@ -1,0 +1,108 @@
+.heroSection {
+    text-align: center;
+    padding: 5rem 2rem;
+    background-color: #ebf4ff;
+    /* Tailwind Indigo-50 */
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 8px rgb(66 153 225 / 0.2);
+}
+
+.heroTitle {
+    font-weight: 800;
+    font-size: 3rem;
+    margin-bottom: 1.5rem;
+    color: #4338ca;
+    /* Tailwind Indigo-700 */
+}
+
+.heroText {
+    color: #4c51bf;
+    /* Tailwind Indigo-600 */
+    margin-bottom: 2.5rem;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+    font-size: 1.125rem;
+}
+
+.heroButtonPrimary {
+    background-color: #4c51bf;
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    font-weight: 600;
+    margin-right: 1rem;
+    border: none;
+    transition: background-color 0.3s ease;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.heroButtonPrimary:hover {
+    background-color: #4338ca;
+    /* Tailwind Indigo-700 */
+}
+
+.heroButtonSecondary {
+    background-color: white;
+    border: 2px solid #4c51bf;
+    color: #4c51bf;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background-color 0.3s ease;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.heroButtonSecondary:hover {
+    background-color: #ebf4ff;
+    /* Tailwind Indigo-50 */
+}
+
+.benefitsSection {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 1rem;
+    text-align: center;
+}
+
+.benefitsTitle {
+    font-weight: 700;
+    font-size: 2rem;
+    margin-bottom: 3rem;
+    color: #4338ca;
+    /* Tailwind Indigo-700 */
+}
+
+.benefitsGrid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 3rem;
+}
+
+@media (min-width: 768px) {
+    .benefitsGrid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+.benefitItem {
+    color: #4a5568;
+    /* Tailwind Gray-700 */
+}
+
+.benefitIcon {
+    font-size: 3rem;
+    color: #4c51bf;
+    /* Tailwind Indigo-600 */
+    margin-bottom: 1rem;
+}
+
+.benefitTitle {
+    font-weight: 600;
+    font-size: 1.25rem;
+    margin-bottom: 0.5rem;
+}
