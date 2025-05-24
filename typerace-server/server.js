@@ -6,7 +6,10 @@ const https = require("https");
 const { Server } = require("socket.io");
 
 const app = express();
-app.use(cors());
+app.use(cors({
+    origin: ["http://localhost:3000", "https://typemaster-sepia.vercel.app"],
+}));
+
 
 const server = http.createServer(app);
 
