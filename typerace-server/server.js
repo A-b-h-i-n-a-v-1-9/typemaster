@@ -58,20 +58,17 @@ io.on("connection", (socket) => {
     socket.on("join-room", async ({ roomId, user, mode = "2min" }) => {
         socket.join(roomId);
 
-        // 🏗️ Room creation and host assignment
         if (!rooms[roomId]) {
             const prompt = await fetchPrompt(mode);
             rooms[roomId] = {
                 users: [],
                 prompt,
                 mode,
-                hostId: socket.id, // assign this socket as host
+                hostId: socket.id,
             };
         }
 
         const room = rooms[roomId];
-
-        // ❌ Ignore new mode requests if room already exists
         const isHost = room.hostId === socket.id;
 
         const existingUser = room.users.find((u) => u.name === user);
@@ -108,20 +105,41 @@ io.on("connection", (socket) => {
         io.to(roomId).emit("player-progress", room.users);
     });
 
-    // 🚀 Restart logic - prompt regeneration only
+    socket.on("start-game", async ({ roomId }) => {
+        const room = rooms[roomId];
+        if (!room) return;
+
+        // Start a 5-second countdown and emit countdown ticks every second
+        let countdown = 5;
+        const countdownInterval = setInterval(() => {
+            if (countdown > 0) {
+                io.to(roomId).emit("countdown-tick", countdown);
+                countdown--;
+            } else {
+                clearInterval(countdownInterval);
+                io.to(roomId).emit("countdown-tick", 0);
+                // Notify clients that game starts now
+                io.to(roomId).emit("game-start", { prompt: room.prompt, mode: room.mode });
+            }
+        }, 1000);
+    });
+
     socket.on("restart-game", async ({ roomId }) => {
         const room = rooms[roomId];
         if (!room) return;
 
+        // Fetch a new prompt for the existing mode
         const newPrompt = await fetchPrompt(room.mode);
         room.prompt = newPrompt;
 
+        // Reset all users progress and stats
         room.users.forEach((u) => {
             u.progress = 0;
             u.wpm = 0;
             u.accuracy = 0;
         });
 
+        // Emit updated room state
         io.to(roomId).emit("room-joined", {
             users: room.users,
             prompt: newPrompt,
@@ -140,9 +158,15 @@ io.on("connection", (socket) => {
             room.users = room.users.filter((u) => u.id !== socket.id);
 
             if (wasHost && room.users.length > 0) {
-                // 🎯 Reassign host if needed
+                room.users.forEach(u => u.isHost = false);
+
                 room.hostId = room.users[0].id;
                 room.users[0].isHost = true;
+            }
+
+            if (room.users.length === 0) {
+                delete rooms[roomId];
+                continue;
             }
 
             io.to(roomId).emit("player-progress", room.users);

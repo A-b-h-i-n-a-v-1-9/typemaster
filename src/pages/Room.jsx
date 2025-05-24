@@ -1,11 +1,17 @@
-// Room.js
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useLocation } from "react-router-dom";
 import socket from "../socket";
 import styles from "./Room.module.css";
 
 function useQuery() {
     return new URLSearchParams(useLocation().search);
+}
+
+function getModeSeconds(m) {
+    if (m === "2min") return 120;
+    if (m === "5min") return 300;
+    if (m === "1min") return 60;
+    return 120;
 }
 
 function Room() {
@@ -18,33 +24,73 @@ function Room() {
     const [prompt, setPrompt] = useState("");
     const [typed, setTyped] = useState("");
     const [startTime, setStartTime] = useState(null);
-    const [countdown, setCountdown] = useState(5); // For game start countdown
+    const [countdown, setCountdown] = useState(null);
     const [gameStarted, setGameStarted] = useState(false);
     const [isHost, setIsHost] = useState(false);
     const [gameReady, setGameReady] = useState(false);
     const [roomMode, setRoomMode] = useState(mode);
-
-    // For gameplay timer
     const [timeLeft, setTimeLeft] = useState(getModeSeconds(mode));
     const [gameOver, setGameOver] = useState(false);
+    const [inputEnabled, setInputEnabled] = useState(false);
+
     const inputRef = useRef(null);
+    const countdownIntervalRef = useRef(null);
+    const gameTimerIntervalRef = useRef(null);
 
-    // Utility to convert mode to seconds
-    function getModeSeconds(m) {
-        if (m === "2min") return 120;
-        if (m === "5min") return 300;
-        if (m === "1min") return 60;
-        // fallback
-        return 120;
-    }
+    const clearIntervals = () => {
+        clearInterval(countdownIntervalRef.current);
+        clearInterval(gameTimerIntervalRef.current);
+        countdownIntervalRef.current = null;
+        gameTimerIntervalRef.current = null;
+    };
 
-    // Socket event handlers
+    const startGameTimer = useCallback(() => {
+        clearIntervals();
+        let duration = getModeSeconds(roomMode);
+        setTimeLeft(duration);
+
+        gameTimerIntervalRef.current = setInterval(() => {
+            duration -= 1;
+            setTimeLeft(duration);
+            if (duration <= 0) {
+                clearInterval(gameTimerIntervalRef.current);
+                gameTimerIntervalRef.current = null;
+                setGameOver(true);
+                setGameStarted(false);
+                setInputEnabled(false);
+                inputRef.current?.blur();
+                socket.emit("end-game", { roomId });
+            }
+        }, 1000);
+    }, [roomMode, roomId]);
+
+    const startCountdown = useCallback(() => {
+        clearIntervals();
+        let time = 5;
+        setCountdown(time);
+        countdownIntervalRef.current = setInterval(() => {
+            time -= 1;
+            setCountdown(time);
+            if (time <= 0) {
+                clearInterval(countdownIntervalRef.current);
+                countdownIntervalRef.current = null;
+                setCountdown(null);
+                setGameStarted(true);
+                setStartTime(Date.now());
+                startGameTimer();
+            }
+        }, 1000);
+    }, [startGameTimer]);
+
     useEffect(() => {
         if (!username || !roomId) return;
 
+        console.log("Emitting join-room with:", { roomId, user: username, mode });
         socket.emit("join-room", { roomId, user: username, mode });
 
         socket.on("room-joined", ({ users, prompt, mode, hostId }) => {
+            console.log("room-joined event received:", { users, prompt, mode, hostId });
+            console.log("socket.id:", socket.id);
             setUsers(users);
             setPrompt(prompt);
             setTyped("");
@@ -53,147 +99,134 @@ function Room() {
             setGameReady(false);
             setRoomMode(mode);
             setIsHost(hostId === socket.id);
+            console.log("isHost set to:", hostId === socket.id);
             setTimeLeft(getModeSeconds(mode));
             setGameOver(false);
-            setCountdown(5);
+            setCountdown(null);
+            setInputEnabled(false);
         });
 
-        socket.on("game-started", () => {
+        socket.on("game-start", ({ prompt, mode }) => {
+            console.log("Game started event received", { prompt, mode });
             setGameReady(true);
+            setInputEnabled(true);
+            inputRef.current?.focus();
             startCountdown();
         });
 
-        socket.on("player-progress", (updatedUsers) => {
-            setUsers(updatedUsers);
-        });
+
+        socket.on("player-progress", setUsers);
 
         socket.on("restart-ack", () => {
-            // Reset everything on restart
+            console.log("restart-ack event received");
+            clearIntervals();
             setTyped("");
             setStartTime(null);
             setGameStarted(false);
             setGameReady(false);
             setTimeLeft(getModeSeconds(roomMode));
             setGameOver(false);
-            setCountdown(5);
+            setCountdown(null);
+            setInputEnabled(false);
+            inputRef.current?.focus();
         });
 
         return () => {
+            clearIntervals();
             socket.off("room-joined");
             socket.off("game-started");
             socket.off("player-progress");
             socket.off("restart-ack");
         };
-    }, [roomId, username, mode, roomMode]);
-
-    // Start game countdown before actual typing time
-    const startCountdown = () => {
-        let timeLeft = 5;
-        setCountdown(timeLeft);
-
-        const interval = setInterval(() => {
-            timeLeft -= 1;
-            setCountdown(timeLeft);
-
-            if (timeLeft <= 0) {
-                clearInterval(interval);
-                setGameStarted(true);
-                setStartTime(Date.now());
-                inputRef.current?.focus();
-                startGameTimer();
-            }
-        }, 1000);
-    };
-
-    // Timer for gameplay duration based on mode
-    const startGameTimer = () => {
-        let duration = getModeSeconds(roomMode);
-        setTimeLeft(duration);
-
-        const timerInterval = setInterval(() => {
-            duration -= 1;
-            setTimeLeft(duration);
-
-            if (duration <= 0) {
-                clearInterval(timerInterval);
-                setGameOver(true);
-                setGameStarted(false);
-                inputRef.current?.blur();
-                // Optionally emit event that game ended
-                socket.emit("end-game", { roomId });
-            }
-        }, 1000);
-    };
+    }, [roomId, username, mode, roomMode, startCountdown]);
 
     const handleStartGame = () => {
-        if (isHost) socket.emit("start-game", { roomId });
+        console.log("Start Game button clicked");
+
+        // Log the state you want to check
+        const showStartBtn = !gameReady && isHost && !gameStarted;
+        console.log({
+            isHost,
+            gameReady,
+            gameStarted,
+            showStartBtn,
+        });
+
+        if (isHost) {
+            console.log("Emitting start-game event", roomId);
+            socket.emit("start-game", { roomId });
+        } else {
+            console.log("User is not host, cannot start game");
+        }
     };
 
     const handleKeyDown = (e) => {
-        if (!gameStarted || !prompt || gameOver) return;
+        if (!inputEnabled || !prompt || gameOver) return;
+        e.preventDefault();
 
         if (e.key === "Backspace") {
             setTyped((prev) => prev.slice(0, -1));
-        } else if (e.key.length === 1) {
-            const next = typed + e.key;
-            setTyped(next);
-
-            const correctChars = [...next].filter((ch, idx) => ch === prompt[idx])
-                .length;
-            const totalTyped = next.length;
-            const accuracyCalc = totalTyped > 0 ? (correctChars / totalTyped) * 100 : 100;
-
-            const timeElapsedMin = (Date.now() - startTime) / 1000 / 60;
-            const grossWpm = (next.split(" ").length / timeElapsedMin) || 0;
-
-            const roundedAccuracy = Math.round(accuracyCalc);
-            const roundedWpm = Math.round(grossWpm);
-
-            const finished = next.length >= prompt.length;
-
-            socket.emit("update-progress", {
-                roomId,
-                user: username,
-                progress: correctChars,
-                wpm: roundedWpm,
-                accuracy: roundedAccuracy,
-                finished,
-            });
+        } else if (e.key.length === 1 && typed.length < prompt.length) {
+            setTyped((prev) => prev + e.key);
         }
     };
 
     const handleRestart = () => {
-        if (isHost) socket.emit("restart-game", { roomId });
+        if (isHost) {
+            console.log("Restart button clicked, emitting restart-game");
+            socket.emit("restart-game", { roomId });
+        }
     };
+
+    useEffect(() => {
+        if (!gameStarted || !prompt || !startTime) return;
+
+        const correctChars = [...typed].filter((ch, idx) => ch === prompt[idx]).length;
+        const totalTyped = typed.length;
+        const accuracy = totalTyped > 0 ? (correctChars / totalTyped) * 100 : 100;
+        const timeElapsedMin = (Date.now() - startTime) / 1000 / 60;
+        const wpm = timeElapsedMin > 0 ? typed.split(" ").length / timeElapsedMin : 0;
+        const finished = typed.length >= prompt.length;
+
+        socket.emit("update-progress", {
+            roomId,
+            user: username,
+            progress: correctChars,
+            wpm: Math.round(wpm),
+            accuracy: Math.round(accuracy),
+            finished,
+        });
+    }, [typed, gameStarted, prompt, startTime, roomId, username]);
 
     const sortedUsers = [...users].sort((a, b) => {
-        if ((b.wpm || 0) === (a.wpm || 0)) {
-            return (b.accuracy || 0) - (a.accuracy || 0);
-        }
-        return (b.wpm || 0) - (a.wpm || 0);
+        return (b.wpm || 0) - (a.wpm || 0) || (b.accuracy || 0) - (a.accuracy || 0);
     });
 
-    const renderPrompt = () => {
-        return (
-            <div className={styles.promptDisplay}>
-                {prompt.split("").map((char, idx) => {
-                    let className = styles.defaultChar;
+    // Debug render conditions for Start Game button
+    console.log("Render conditions:", {
+        isHost,
+        gameReady,
+        gameStarted,
+        showStartBtn: !gameReady && isHost && !gameStarted,
+    });
 
-                    if (idx < typed.length) {
-                        className = typed[idx] === char ? styles.correctChar : styles.wrongChar;
-                    } else if (idx === typed.length) {
-                        className = styles.activeChar;
-                    }
-
-                    return (
-                        <span key={idx} className={className}>
-                            {char}
-                        </span>
-                    );
-                })}
-            </div>
-        );
-    };
+    const renderPrompt = () => (
+        <div className={styles.promptDisplay}>
+            {prompt.split("").map((char, idx) => {
+                let className = styles.defaultChar;
+                if (idx < typed.length) {
+                    className = typed[idx] === char ? styles.correctChar : styles.wrongChar;
+                } else if (idx === typed.length) {
+                    className = styles.activeChar;
+                }
+                return (
+                    <span key={idx} className={className}>
+                        {char}
+                    </span>
+                );
+            })}
+        </div>
+    );
 
     return (
         <div className={styles.roomContainer} onClick={() => inputRef.current?.focus()}>
@@ -201,28 +234,22 @@ function Room() {
                 <div className={styles.roomInfo}>
                     Room: {roomId} | You: {username} | Mode: {roomMode}
                 </div>
-
-                {/* Timer shown on top right */}
                 {gameStarted && !gameOver && (
                     <div className={styles.gameTimer}>
-                        Time Left: {Math.floor(timeLeft / 60)
-                            .toString()
-                            .padStart(2, "0")}
-                        :
-                        {(timeLeft % 60).toString().padStart(2, "0")}
+                        Time Left:{" "}
+                        {String(Math.floor(timeLeft / 60)).padStart(2, "0")}:
+                        {String(timeLeft % 60).padStart(2, "0")}
                     </div>
                 )}
             </div>
 
             <div className={styles.mainContent}>
                 <div className={styles.scoreboard}>
-                    {/* Add Start Game button above Restart */}
                     {!gameReady && isHost && !gameStarted && (
                         <button onClick={handleStartGame} className={styles.startBtn}>
                             Start Game
                         </button>
                     )}
-
                     {isHost && (
                         <button onClick={handleRestart} className={styles.restartBtn}>
                             Restart
@@ -242,7 +269,6 @@ function Room() {
                     </ol>
                 </div>
 
-
                 <div className={styles.typingArea}>
                     {renderPrompt()}
                     <input
@@ -252,36 +278,38 @@ function Room() {
                         value=""
                         onChange={() => { }}
                         autoFocus
-                        disabled={!gameStarted || gameOver}
+                        disabled={!inputEnabled || gameOver}
+                        spellCheck={false}
+                        autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="off"
                     />
-
                 </div>
             </div>
 
-            {!gameStarted && gameReady && countdown > 0 && (
+            {!gameStarted && gameReady && countdown !== null && countdown > 0 && (
                 <div className={styles.countdownPopup}>Starting in {countdown}...</div>
             )}
 
-            {/* Game Over Popup with celebration */}
             {gameOver && (
-                <div className={styles.gameOverPopup}>
-                    <h2>Game Over!</h2>
-                    <h3>Final Rankings:</h3>
-                    <ol>
-                        {sortedUsers.map((u, idx) => (
-                            <li key={u.id}>
-                                {idx + 1}. {u.name} — {u.wpm || 0} WPM | {u.accuracy || 0}%
-                            </li>
-                        ))}
-                    </ol>
-                    <div className={styles.confetti}>🎉🎊🎉</div>
-                    {isHost && (
-                        <button onClick={handleRestart} className={styles.restartBtn}>
-                            Restart Game
+                <div className={styles.gameOverOverlay}>
+                    <div className={styles.gameOverContent}>
+                        <h1>Game Over!</h1>
+                        <p>Final results:</p>
+                        <ol style={{ listStyleType: 'decimal', paddingLeft: '1.5rem', textAlign: 'left' }}>
+                            {sortedUsers.map((u, idx) => (
+                                <li key={u.id} style={{ marginBottom: '0.5rem', fontSize: '1.1rem', color: '#2d3748' }}>
+                                    <strong>{u.name}</strong> — {u.wpm || 0} WPM, {u.accuracy || 0}%
+                                </li>
+                            ))}
+                        </ol>
+                        <button className={styles.restartBtn} onClick={handleRestart}>
+                            Restart
                         </button>
-                    )}
+                    </div>
                 </div>
             )}
+
         </div>
     );
 }
