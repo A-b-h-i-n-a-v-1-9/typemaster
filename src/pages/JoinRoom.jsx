@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
 import styles from "./JoinRoom.module.css";
 
-const socket = io("http://localhost:3001");
+const socket = io("https://typemaster-io10.onrender.com/");
 
 const JoinRoom = () => {
     const [roomId, setRoomId] = useState("");
