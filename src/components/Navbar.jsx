@@ -6,11 +6,13 @@ const Navbar = () => {
     return (
         <nav className={styles.navbar}>
             <div className={styles.navbarContainer}>
-                <h1 className="text-2xl font-bold cursor-pointer">TypeRace</h1>
+                <Link to="/" className={styles.brandName}>
+                    <h1 className={styles.brandName}>Typix</h1>
+                </Link>
                 <div>
                     <Link to="/create-room" className={styles.navButton}>Create Room</Link>
                     <Link to="/join-room" className={styles.navButton}>Join Race</Link>
-                    <button className={styles.navButton}>Practice</button>
+                    <Link to="/practice" className={styles.navButton}>Practice</Link>
                 </div>
             </div>
         </nav>

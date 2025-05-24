@@ -134,7 +134,7 @@ function Room() {
         return () => {
             clearIntervals();
             socket.off("room-joined");
-            socket.off("game-started");
+            socket.off("game-start");
             socket.off("player-progress");
             socket.off("restart-ack");
         };
@@ -303,9 +303,6 @@ function Room() {
                                 </li>
                             ))}
                         </ol>
-                        <button className={styles.restartBtn} onClick={handleRestart}>
-                            Restart
-                        </button>
                     </div>
                 </div>
             )}

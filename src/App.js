@@ -4,7 +4,8 @@ import MainLayout from "./layouts/MainLayout";
 import Home from "./pages/Home";
 import CreateRoom from "./pages/CreateRoom";
 import Room from "./pages/Room";
-import JoinRoom from "./pages/JoinRoom"; // ✅ This line is retained from HEAD
+import JoinRoom from "./pages/JoinRoom";
+import Practice from "./pages/Practice"; // ✅ Imported Practice component
 
 function App() {
   return (
@@ -14,7 +15,8 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/create-room" element={<CreateRoom />} />
           <Route path="/room/:roomId" element={<Room />} />
-          <Route path="/join-room" element={<JoinRoom />} /> {/* ✅ Route added */}
+          <Route path="/join-room" element={<JoinRoom />} />
+          <Route path="/practice" element={<Practice />} /> {/* ✅ Practice route */}
         </Routes>
       </MainLayout>
     </Router>
